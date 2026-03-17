@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC 고래 추적기 | HerdVibe</title>
+<meta name="description" content="비트코인 고래 지갑 실시간 추적 - 집중도, 휴면고래 각성, 거래소/비거래소 분류 대시보드">
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<!-- Chart.js + Plugins -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+<!-- Kakao SDK -->
+<script src="https://t1.kakaocdn.net/kakao_js_sdk/2.3.0/kakao.min.js"></script>
+
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg: #0a0a0a;
+    --card: #111111;
+    --card-border: #1a1a1a;
+    --text: #e0e0e0;
+    --text-dim: #777;
+    --accent: #00d4aa;
+    --accent-glow: rgba(0,212,170,0.15);
+    --red: #ff4d6a;
+    --orange: #ff9f43;
+    --blue: #4dabf7;
+    --purple: #b197fc;
+    --yellow: #ffd43b;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ── Layout ── */
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px 16px 100px; }
+  .header { text-align: center; padding: 24px 0 16px; }
+  .header h1 { font-size: 22px; font-weight: 900; letter-spacing: -0.5px; }
+  .header h1 span { color: var(--accent); }
+  .header .subtitle { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+  .update-time { text-align: center; color: var(--text-dim); font-size: 11px; margin-bottom: 16px; }
+  .update-time span { color: var(--accent); }
+
+  /* ── Summary Cards ── */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .summary-card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 14px 12px;
+    text-align: center;
+  }
+  .summary-card .label { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+  .summary-card .value { font-size: 20px; font-weight: 700; }
+  .summary-card .sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .summary-card.accent .value { color: var(--accent); }
+  .summary-card.red .value { color: var(--red); }
+  .summary-card.blue .value { color: var(--blue); }
+  .summary-card.purple .value { color: var(--purple); }
+
+  /* ── Tabs ── */
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    background: var(--card);
+    border-radius: 10px;
+    padding: 4px;
+    border: 1px solid var(--card-border);
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 10px 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .tab-btn.active {
+    background: var(--accent);
+    color: #000;
+    font-weight: 700;
+  }
+  .tab-btn:hover:not(.active) { background: rgba(255,255,255,0.05); color: var(--text); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .card-desc { font-size: 12px; color: var(--text-dim); margin-bottom: 16px; }
+  .chart-wrap { position: relative; width: 100%; }
+  .chart-wrap canvas { width: 100% !important; }
+
+  /* ── Reset Zoom Button ── */
+  .reset-zoom {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(0,212,170,0.15);
+    color: var(--accent);
+    border: 1px solid rgba(0,212,170,0.3);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    display: none;
+    z-index: 10;
+    font-family: 'Noto Sans KR', sans-serif;
+  }
+  .reset-zoom:hover { background: rgba(0,212,170,0.25); }
+
+  /* ── Alert Table ── */
+  .alert-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .alert-table th {
+    text-align: left;
+    padding: 8px 10px;
+    color: var(--text-dim);
+    font-weight: 500;
+    border-bottom: 1px solid var(--card-border);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .alert-table td {
+    padding: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    vertical-align: middle;
+  }
+  .alert-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .addr-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+  .addr-link:hover { text-decoration: underline; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .badge-exchange { background: rgba(255,77,106,0.15); color: var(--red); }
+  .badge-etf { background: rgba(75,171,247,0.15); color: var(--blue); }
+  .badge-institution { background: rgba(177,151,252,0.15); color: var(--purple); }
+  .badge-unknown { background: rgba(255,159,67,0.15); color: var(--orange); }
+  .badge-dormant { background: rgba(255,77,106,0.2); color: var(--red); border: 1px solid rgba(255,77,106,0.3); }
+  .badge-active { background: rgba(0,212,170,0.15); color: var(--accent); border: 1px solid rgba(0,212,170,0.3); }
+
+  /* ── Whale List ── */
+  .whale-list-controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .filter-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--card-border);
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    cursor: pointer;
+    font-family: 'Noto Sans KR', sans-serif;
+    transition: all 0.2s;
+  }
+  .filter-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+
+  /* ── Donut center ── */
+  .donut-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .donut-wrap { position: relative; width: 220px; height: 220px; }
+  .donut-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+  }
+  .donut-center .big { font-size: 22px; font-weight: 900; color: var(--accent); }
+  .donut-center .small { font-size: 11px; color: var(--text-dim); }
+  .legend-list { list-style: none; }
+  .legend-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 13px;
+  }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .legend-value { margin-left: auto; font-weight: 700; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+  /* ── Guide Text (SEO) ── */
+  .guide-text {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 24px;
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--text-dim);
+  }
+  .guide-text h3 { color: var(--text); font-size: 15px; margin-bottom: 8px; }
+
+  /* ── Share Bar ── */
+  .share-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(17,17,17,0.95);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--card-border);
+    padding: 10px 16px;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    z-index: 100;
+  }
+  .share-btn {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--card-border);
+    background: rgba(255,255,255,0.05);
+    color: var(--text);
+    font-size: 12px;
+    cursor: pointer;
+    font-family: 'Noto Sans KR', sans-serif;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .share-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .share-btn.copied { background: var(--accent); color: #000; border-color: var(--accent); }
+
+  /* ── No data state ── */
+  .no-data {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-dim);
+  }
+  .no-data .icon { font-size: 48px; margin-bottom: 12px; }
+  .no-data p { font-size: 14px; }
+  .no-data .hint { font-size: 12px; margin-top: 8px; color: #555; }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .summary-card .value { font-size: 16px; }
+    .tab-btn { font-size: 11px; padding: 8px 4px; }
+    .donut-container { flex-direction: column; }
+  }
+
+  /* ── Loading ── */
+  .loading { text-align: center; padding: 40px; }
+  .loading .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--card-border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <h1>🐋 BTC <span>고래 추적기</span></h1>
+    <div class="subtitle">비트코인 대형 지갑 실시간 모니터링 — 집중도 · 휴면각성 · 거래소분류</div>
+  </div>
+  <div class="update-time">마지막 업데이트: <span id="updateTime">로딩중...</span></div>
+
+  <!-- Summary Cards -->
+  <div class="summary-grid">
+    <div class="summary-card accent">
+      <div class="label">추적 고래 BTC</div>
+      <div class="value mono" id="totalBtc">-</div>
+      <div class="sub" id="totalUsd">-</div>
+    </div>
+    <div class="summary-card red">
+      <div class="label">거래소 보유</div>
+      <div class="value mono" id="exchangeBtc">-</div>
+      <div class="sub" id="exchangePct">-</div>
+    </div>
+    <div class="summary-card blue">
+      <div class="label">ETF/기관 보유</div>
+      <div class="value mono" id="etfBtc">-</div>
+      <div class="sub" id="etfPct">-</div>
+    </div>
+    <div class="summary-card purple">
+      <div class="label">미확인 고래</div>
+      <div class="value mono" id="unknownBtc">-</div>
+      <div class="sub" id="unknownPct">-</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="concentration">📊 집중도 추이</button>
+    <button class="tab-btn" data-tab="dormant">💤 휴면고래 각성</button>
+    <button class="tab-btn" data-tab="category">🏛️ 카테고리 분류</button>
+  </div>
+
+  <!-- Tab 1: Concentration -->
+  <div class="tab-content active" id="tab-concentration">
+    <div class="card">
+      <div class="card-title">📈 고래 집중도 추이</div>
+      <div class="card-desc">Top 10/20/50 고래 주소가 전체 BTC 공급량에서 차지하는 비율 변화 (가격 오버레이)</div>
+      <div class="chart-wrap">
+        <button class="reset-zoom" id="resetZoom1" onclick="resetChart(concentrationChart)">↻ 리셋</button>
+        <canvas id="concentrationChart" height="350"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">📊 카테고리별 BTC 보유량 추이</div>
+      <div class="card-desc">거래소 / ETF·기관 / 미확인 고래별 보유 BTC 변화</div>
+      <div class="chart-wrap">
+        <button class="reset-zoom" id="resetZoom2" onclick="resetChart(categoryTimeChart)">↻ 리셋</button>
+        <canvas id="categoryTimeChart" height="300"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 2: Dormant Alerts -->
+  <div class="tab-content" id="tab-dormant">
+    <div class="card">
+      <div class="card-title">💤 휴면 고래 각성 알림</div>
+      <div class="card-desc">1년 이상 움직임이 없던 대형 지갑이 활성화되면 감지합니다. 대규모 매도 압력의 선행 지표가 될 수 있습니다.</div>
+      <div id="dormantAlerts">
+        <div class="loading"><div class="spinner"></div>데이터 로딩중...</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔍 전체 고래 활동 현황</div>
+      <div class="card-desc">현재 추적 중인 고래 주소의 휴면/활성 상태</div>
+      <div class="whale-list-controls">
+        <button class="filter-btn active" data-filter="all">전체</button>
+        <button class="filter-btn" data-filter="dormant">💤 휴면</button>
+        <button class="filter-btn" data-filter="active">⚡ 활성</button>
+        <button class="filter-btn" data-filter="exchange">거래소</button>
+        <button class="filter-btn" data-filter="unknown">미확인</button>
+      </div>
+      <div style="overflow-x:auto;" id="whaleTableWrap">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 3: Category Breakdown -->
+  <div class="tab-content" id="tab-category">
+    <div class="card">
+      <div class="card-title">🏛️ 카테고리별 보유 비중</div>
+      <div class="card-desc">추적 중인 고래 지갑을 거래소 / ETF / 기관 / 미확인으로 분류한 BTC 보유 현황</div>
+      <div class="donut-container">
+        <div class="donut-wrap">
+          <canvas id="donutChart"></canvas>
+          <div class="donut-center">
+            <div class="big" id="donutTotal">-</div>
+            <div class="small">추적 BTC</div>
+          </div>
+        </div>
+        <ul class="legend-list" id="donutLegend"></ul>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔝 Top 20 고래 지갑 (보유량 순)</div>
+      <div class="card-desc">추적 중인 주소 중 가장 많은 BTC를 보유한 상위 20개 지갑</div>
+      <div class="chart-wrap">
+        <canvas id="topWhalesChart" height="400"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- SEO Guide Text -->
+  <div class="guide-text">
+    <h3>🐋 BTC 고래 추적기란?</h3>
+    <p>비트코인 고래(Whale)란 대량의 BTC를 보유한 지갑 주소를 의미합니다. 이 대시보드는 주요 거래소 콜드월렛, ETF 커스터디 주소, 기관 투자자 주소, 그리고 미확인 대형 지갑을 매일 추적하여 세 가지 핵심 지표를 제공합니다.</p>
+    <p><strong>1. 집중도 추이:</strong> Top 10/20/50 고래가 전체 BTC 공급량에서 차지하는 비율 변화를 추적합니다. 집중도 상승은 고래 매집 신호, 하락은 분산/매도 신호로 해석됩니다.</p>
+    <p><strong>2. 휴면 고래 각성:</strong> 1년 이상 아무 활동이 없던 대형 지갑이 갑자기 움직이면 알림을 생성합니다. 초기 채굴자나 장기 보유자의 매도는 큰 시장 영향을 줄 수 있습니다.</p>
+    <p><strong>3. 카테고리 분류:</strong> 알려진 거래소(Binance, Coinbase 등), ETF(IBIT, GBTC, FBTC), 기관(MicroStrategy), 미확인 고래로 분류하여 진짜 스마트머니의 움직임을 파악합니다.</p>
+    <p>데이터 출처: mempool.space API (무료 오픈소스) | 매일 UTC 01:00 자동 업데이트</p>
+  </div>
+</div>
+
+<!-- Share Bar -->
+<div class="share-bar">
+  <button class="share-btn" onclick="shareX()">𝕏 공유</button>
+  <button class="share-btn" onclick="shareKakao()">💬 카카오톡</button>
+  <button class="share-btn" onclick="shareTelegram()">✈️ 텔레그램</button>
+  <button class="share-btn" id="copyBtn" onclick="copyLink()">📋 링크복사</button>
+</div>
+
+<script>
+// ── Config ──
+const DATA_BASE = 'https://kittycapital.github.io/btc-whale-tracker/data';
+const SHARE_URL = 'https://herdvibe.com/130'; // adjust page number
+const SHARE_TITLE = 'BTC 고래 추적기 - 비트코인 대형 지갑 실시간 모니터링';
+
+// ── Chart instances ──
+let concentrationChart, categoryTimeChart, donutChart, topWhalesChart;
+
+// ── Watermark Plugin ──
+const watermarkPlugin = {
+  id: 'watermark',
+  afterDraw(chart) {
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.font = '11px JetBrains Mono';
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.textAlign = 'right';
+    ctx.fillText('herdvibe.com', chart.width - 10, chart.height - 8);
+    ctx.restore();
+  }
+};
+Chart.register(watermarkPlugin);
+
+// ── Chart Defaults ──
+Chart.defaults.color = '#777';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.05)';
+Chart.defaults.font.family = "'Noto Sans KR', 'JetBrains Mono', sans-serif";
+
+// ── Zoom Config ──
+function makeZoomConfig(chartRef, resetBtnId) {
+  return {
+    zoom: {
+      wheel: { enabled: true },
+      pinch: { enabled: true },
+      mode: 'x',
+      onZoom: () => { document.getElementById(resetBtnId).style.display = 'block'; }
+    },
+    pan: { enabled: true, mode: 'x' }
+  };
+}
+function resetChart(chart) {
+  if (!chart) return;
+  chart.resetZoom();
+  document.querySelectorAll('.reset-zoom').forEach(b => b.style.display = 'none');
+}
+
+// ── Tabs ──
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Filters ──
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    filterWhaleTable(btn.dataset.filter);
+  });
+});
+
+function filterWhaleTable(filter) {
+  document.querySelectorAll('#whaleTableWrap tr[data-cat]').forEach(row => {
+    const cat = row.dataset.cat;
+    const dormant = row.dataset.dormant === 'true';
+    let show = filter === 'all'
+      || (filter === 'dormant' && dormant)
+      || (filter === 'active' && !dormant)
+      || filter === cat;
+    row.style.display = show ? '' : 'none';
+  });
+}
+
+// ── Number Formatting ──
+function fmtBtc(v) { return v >= 1000 ? (v/1000).toFixed(1) + 'K' : v.toFixed(0); }
+function fmtUsd(v) {
+  if (v >= 1e9) return '$' + (v/1e9).toFixed(1) + 'B';
+  if (v >= 1e6) return '$' + (v/1e6).toFixed(0) + 'M';
+  return '$' + v.toLocaleString();
+}
+function fmtPct(v) { return v.toFixed(2) + '%'; }
+function shortAddr(a) { return a.length > 20 ? a.slice(0,8) + '...' + a.slice(-6) : a; }
+
+// ── Data Loading ──
+async function loadData() {
+  try {
+    const [latestRes, historyRes, alertsRes] = await Promise.all([
+      fetch(DATA_BASE + '/latest.json'),
+      fetch(DATA_BASE + '/whale_history.json'),
+      fetch(DATA_BASE + '/dormant_alerts.json'),
+    ]);
+
+    let latest = null, history = [], alerts = [];
+    if (latestRes.ok) latest = await latestRes.json();
+    if (historyRes.ok) history = await historyRes.json();
+    if (alertsRes.ok) alerts = await alertsRes.json();
+
+    if (!latest && history.length === 0) {
+      showNoData();
+      return;
+    }
+
+    if (latest) renderSummary(latest);
+    if (history.length > 0) {
+      renderConcentrationChart(history);
+      renderCategoryTimeChart(history);
+    }
+    if (latest) {
+      renderDormantAlerts(alerts, latest);
+      renderWhaleTable(latest);
+      renderDonut(latest);
+      renderTopWhales(latest);
+    }
+  } catch (e) {
+    console.error('Data load error:', e);
+    showNoData();
+  }
+}
+
+function showNoData() {
+  document.querySelectorAll('.loading').forEach(el => {
+    el.innerHTML = '';
+  });
+  document.getElementById('tab-concentration').innerHTML = `
+    <div class="no-data">
+      <div class="icon">🐋</div>
+      <p>아직 수집된 데이터가 없습니다</p>
+      <p class="hint">GitHub Actions 워크플로우를 실행하면 데이터가 수집됩니다.<br>
+      수동 실행: Actions 탭 → "BTC Whale Tracker" → Run workflow</p>
+    </div>`;
+}
+
+// ── Render Summary ──
+function renderSummary(data) {
+  document.getElementById('updateTime').textContent = data.date + ' UTC';
+  document.getElementById('totalBtc').textContent = fmtBtc(data.total_tracked_btc);
+  document.getElementById('totalUsd').textContent = fmtUsd(data.total_tracked_btc * data.btc_price);
+
+  const cat = data.by_category;
+  document.getElementById('exchangeBtc').textContent = fmtBtc(cat.exchange.btc);
+  document.getElementById('exchangePct').textContent = '공급량 ' + fmtPct(cat.exchange.pct);
+  document.getElementById('etfBtc').textContent = fmtBtc((cat.etf?.btc || 0) + (cat.institution?.btc || 0));
+  document.getElementById('etfPct').textContent = '공급량 ' + fmtPct((cat.etf?.pct || 0) + (cat.institution?.pct || 0));
+  document.getElementById('unknownBtc').textContent = fmtBtc(cat.unknown.btc);
+  document.getElementById('unknownPct').textContent = '공급량 ' + fmtPct(cat.unknown.pct);
+}
+
+// ── Chart 1: Concentration ──
+function renderConcentrationChart(history) {
+  const ctx = document.getElementById('concentrationChart').getContext('2d');
+  const labels = history.map(h => h.date);
+
+  concentrationChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Top 10 (%)',
+          data: history.map(h => h.top10_pct),
+          borderColor: '#00d4aa',
+          backgroundColor: 'rgba(0,212,170,0.08)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: history.length > 30 ? 0 : 3,
+          borderWidth: 2,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Top 20 (%)',
+          data: history.map(h => h.top20_pct),
+          borderColor: '#4dabf7',
+          backgroundColor: 'transparent',
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 1.5,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Top 50 (%)',
+          data: history.map(h => h.top50_pct),
+          borderColor: '#b197fc',
+          backgroundColor: 'transparent',
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 1.5,
+          yAxisID: 'y',
+        },
+        {
+          label: 'BTC 가격',
+          data: history.map(h => h.btc_price),
+          borderColor: 'rgba(255,159,67,0.5)',
+          backgroundColor: 'transparent',
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 1,
+          borderDash: [4, 4],
+          yAxisID: 'y1',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: {
+          position: 'left',
+          title: { display: true, text: '공급량 비율 (%)', font: { size: 11 } },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { callback: v => v.toFixed(2) + '%' },
+        },
+        y1: {
+          position: 'right',
+          title: { display: true, text: 'BTC 가격 ($)', font: { size: 11 } },
+          grid: { display: false },
+          ticks: { callback: v => '$' + (v/1000).toFixed(0) + 'K' },
+        },
+        x: {
+          grid: { display: false },
+          ticks: { maxRotation: 0, maxTicksLimit: 8 },
+        }
+      },
+      plugins: {
+        zoom: makeZoomConfig(concentrationChart, 'resetZoom1'),
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              if (ctx.datasetIndex === 3) return `BTC: $${ctx.parsed.y.toLocaleString()}`;
+              return `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(3)}%`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// ── Chart 2: Category Time Series ──
+function renderCategoryTimeChart(history) {
+  const ctx = document.getElementById('categoryTimeChart').getContext('2d');
+
+  categoryTimeChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: history.map(h => h.date),
+      datasets: [
+        {
+          label: '거래소',
+          data: history.map(h => h.exchange_btc),
+          borderColor: '#ff4d6a',
+          backgroundColor: 'rgba(255,77,106,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2,
+        },
+        {
+          label: 'ETF',
+          data: history.map(h => h.etf_btc),
+          borderColor: '#4dabf7',
+          backgroundColor: 'rgba(75,171,247,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2,
+        },
+        {
+          label: '기관',
+          data: history.map(h => h.institution_btc),
+          borderColor: '#b197fc',
+          backgroundColor: 'rgba(177,151,252,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2,
+        },
+        {
+          label: '미확인 고래',
+          data: history.map(h => h.unknown_btc),
+          borderColor: '#ff9f43',
+          backgroundColor: 'rgba(255,159,67,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: {
+          title: { display: true, text: 'BTC', font: { size: 11 } },
+          ticks: { callback: v => fmtBtc(v) },
+          grid: { color: 'rgba(255,255,255,0.04)' },
+        },
+        x: {
+          grid: { display: false },
+          ticks: { maxRotation: 0, maxTicksLimit: 8 },
+        }
+      },
+      plugins: {
+        zoom: makeZoomConfig(categoryTimeChart, 'resetZoom2'),
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()} BTC`
+          }
+        }
+      }
+    }
+  });
+}
+
+// ── Dormant Alerts ──
+function renderDormantAlerts(alerts, latest) {
+  const container = document.getElementById('dormantAlerts');
+
+  if (!alerts || alerts.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center; padding:40px; color:var(--text-dim);">
+        <div style="font-size:36px; margin-bottom:8px;">😴</div>
+        <p>현재 감지된 휴면 고래 각성이 없습니다</p>
+        <p style="font-size:12px; color:#555; margin-top:4px;">1년 이상 미활동 지갑이 움직이면 여기에 표시됩니다</p>
+      </div>`;
+    return;
+  }
+
+  // Sort by most recent
+  const sorted = [...alerts].sort((a, b) => b.detected_date.localeCompare(a.detected_date));
+
+  let html = `<table class="alert-table">
+    <thead><tr>
+      <th>감지일</th><th>주소</th><th>분류</th><th>잔액</th><th>휴면기간</th>
+    </tr></thead><tbody>`;
+
+  sorted.forEach(a => {
+    const catClass = 'badge-' + a.category;
+    const catLabel = {exchange:'거래소', etf:'ETF', institution:'기관', unknown:'미확인'}[a.category] || a.category;
+    html += `<tr>
+      <td style="white-space:nowrap; color:var(--red);">🚨 ${a.detected_date}</td>
+      <td><a class="addr-link" href="https://mempool.space/address/${a.address}" target="_blank">${shortAddr(a.address)}</a>
+        <div style="font-size:10px;color:var(--text-dim)">${a.label}</div></td>
+      <td><span class="badge ${catClass}">${catLabel}</span></td>
+      <td class="mono" style="text-align:right">${a.balance_btc.toLocaleString()} BTC</td>
+      <td class="mono" style="text-align:right; color:var(--red)">${Math.round(a.days_dormant)}일</td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+// ── Whale Table ──
+function renderWhaleTable(data) {
+  const addresses = Object.entries(data.addresses)
+    .map(([addr, info]) => ({ addr, ...info }))
+    .sort((a, b) => b.balance_btc - a.balance_btc);
+
+  let html = `<table class="alert-table">
+    <thead><tr>
+      <th>#</th><th>주소</th><th>분류</th><th>잔액 (BTC)</th><th>잔액 (USD)</th><th>상태</th>
+    </tr></thead><tbody>`;
+
+  addresses.forEach((w, i) => {
+    const catClass = 'badge-' + w.category;
+    const catLabel = {exchange:'거래소', etf:'ETF', institution:'기관', unknown:'미확인'}[w.category] || w.category;
+    const isDormant = w.days_dormant && w.days_dormant > 365;
+    const statusBadge = isDormant
+      ? `<span class="badge badge-dormant">💤 ${Math.round(w.days_dormant)}일</span>`
+      : w.days_dormant !== null
+        ? `<span class="badge badge-active">⚡ 활성</span>`
+        : '<span style="color:var(--text-dim); font-size:11px">-</span>';
+
+    html += `<tr data-cat="${w.category}" data-dormant="${!!isDormant}">
+      <td style="color:var(--text-dim)">${i+1}</td>
+      <td><a class="addr-link" href="https://mempool.space/address/${w.addr}" target="_blank">${shortAddr(w.addr)}</a>
+        <div style="font-size:10px;color:var(--text-dim)">${w.label}</div></td>
+      <td><span class="badge ${catClass}">${catLabel}</span></td>
+      <td class="mono" style="text-align:right">${w.balance_btc.toLocaleString()}</td>
+      <td class="mono" style="text-align:right; color:var(--text-dim)">${fmtUsd(w.balance_usd)}</td>
+      <td>${statusBadge}</td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('whaleTableWrap').innerHTML = html;
+}
+
+// ── Donut Chart ──
+function renderDonut(data) {
+  const cat = data.by_category;
+  const items = [
+    { label: '거래소', btc: cat.exchange.btc, pct: cat.exchange.pct, color: '#ff4d6a' },
+    { label: 'ETF', btc: cat.etf?.btc || 0, pct: cat.etf?.pct || 0, color: '#4dabf7' },
+    { label: '기관', btc: cat.institution?.btc || 0, pct: cat.institution?.pct || 0, color: '#b197fc' },
+    { label: '미확인 고래', btc: cat.unknown.btc, pct: cat.unknown.pct, color: '#ff9f43' },
+  ];
+
+  document.getElementById('donutTotal').textContent = fmtBtc(data.total_tracked_btc);
+
+  // Legend
+  const legendHtml = items.map(item => `
+    <li>
+      <span class="legend-dot" style="background:${item.color}"></span>
+      <span>${item.label}</span>
+      <span class="legend-value">${fmtBtc(item.btc)} BTC</span>
+    </li>
+  `).join('');
+  document.getElementById('donutLegend').innerHTML = legendHtml;
+
+  const ctx = document.getElementById('donutChart').getContext('2d');
+  donutChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: items.map(i => i.label),
+      datasets: [{
+        data: items.map(i => i.btc),
+        backgroundColor: items.map(i => i.color),
+        borderColor: '#111111',
+        borderWidth: 3,
+        hoverOffset: 8,
+      }]
+    },
+    options: {
+      responsive: true,
+      cutout: '68%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.label}: ${ctx.parsed.toLocaleString()} BTC (${fmtPct(items[ctx.dataIndex].pct)})`
+          }
+        }
+      }
+    }
+  });
+}
+
+// ── Top Whales Bar ──
+function renderTopWhales(data) {
+  const top20 = Object.entries(data.addresses)
+    .map(([addr, info]) => ({ addr, ...info }))
+    .sort((a, b) => b.balance_btc - a.balance_btc)
+    .slice(0, 20);
+
+  const colors = {
+    exchange: '#ff4d6a',
+    etf: '#4dabf7',
+    institution: '#b197fc',
+    unknown: '#ff9f43',
+  };
+
+  const ctx = document.getElementById('topWhalesChart').getContext('2d');
+  topWhalesChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top20.map(w => w.label.length > 16 ? w.label.slice(0, 14) + '..' : w.label),
+      datasets: [{
+        data: top20.map(w => w.balance_btc),
+        backgroundColor: top20.map(w => colors[w.category] || '#555'),
+        borderRadius: 4,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => top20[items[0].dataIndex].label,
+            label: ctx => `${ctx.parsed.x.toLocaleString()} BTC (${fmtUsd(top20[ctx.dataIndex].balance_usd)})`,
+            afterLabel: ctx => `주소: ${shortAddr(top20[ctx.dataIndex].addr)}`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { callback: v => fmtBtc(v) },
+        },
+        y: {
+          grid: { display: false },
+          ticks: { font: { size: 10 } },
+        }
+      }
+    }
+  });
+}
+
+// ── Share Functions ──
+function shareX() {
+  const text = encodeURIComponent('🐋 BTC 고래 추적기 - 비트코인 대형 지갑 실시간 모니터링\n');
+  window.open(`https://twitter.com/intent/tweet?text=${text}&url=${encodeURIComponent(SHARE_URL)}`, '_blank');
+}
+
+function shareKakao() {
+  if (typeof Kakao !== 'undefined' && !Kakao.isInitialized()) {
+    Kakao.init('a43ed7b39fac35458f4f9df925a279b5');
+  }
+  try {
+    Kakao.Share.sendDefault({
+      objectType: 'feed',
+      content: {
+        title: 'BTC 고래 추적기',
+        description: '비트코인 대형 지갑 실시간 모니터링 - 집중도·휴면각성·거래소분류',
+        imageUrl: '',
+        link: { mobileWebUrl: SHARE_URL, webUrl: SHARE_URL },
+      },
+    });
+  } catch (e) {
+    window.open(`https://story.kakao.com/share?url=${encodeURIComponent(SHARE_URL)}`, '_blank');
+  }
+}
+
+function shareTelegram() {
+  const text = encodeURIComponent('🐋 BTC 고래 추적기\n' + SHARE_URL);
+  window.open(`https://t.me/share/url?url=${encodeURIComponent(SHARE_URL)}&text=${text}`, '_blank');
+}
+
+function copyLink() {
+  const btn = document.getElementById('copyBtn');
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(SHARE_URL).then(() => {
+      btn.classList.add('copied');
+      btn.textContent = '✅ 복사됨!';
+      setTimeout(() => { btn.classList.remove('copied'); btn.textContent = '📋 링크복사'; }, 2000);
+    });
+  } else {
+    // execCommand fallback
+    const ta = document.createElement('textarea');
+    ta.value = SHARE_URL;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.classList.add('copied');
+    btn.textContent = '✅ 복사됨!';
+    setTimeout(() => { btn.classList.remove('copied'); btn.textContent = '📋 링크복사'; }, 2000);
+  }
+}
+
+// ── iframe Height Feedback (HerdVibe standard) ──
+const WEB_HEIGHT = 'auto';
+const TABLET_HEIGHT = 'auto';
+const MOBILE_HEIGHT = 'auto';
+
+function postHeight() {
+  const h = document.documentElement.scrollHeight;
+  window.parent.postMessage({ type: 'herdvibe-height', height: h }, '*');
+}
+if (window.ResizeObserver) {
+  let lastH = 0;
+  new ResizeObserver(() => {
+    const h = document.documentElement.scrollHeight;
+    if (Math.abs(h - lastH) > 5) { lastH = h; postHeight(); }
+  }).observe(document.body);
+}
+
+// ── Init ──
+loadData();
+</script>
+</body>
+</html>

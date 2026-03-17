@@ -1,0 +1,22 @@
+[
+  {
+    "address": "385cR5DM96n1HvBDMzLHPYcw89fZAXULJP",
+    "label": "Unknown Whale #7",
+    "category": "unknown",
+    "balance_btc": 11800,
+    "balance_usd": 1038400000,
+    "days_dormant": 1515,
+    "last_outgoing_ts": 1580000000,
+    "detected_date": "2026-03-15"
+  },
+  {
+    "address": "1LQoWist8KkaUXSPKZHNvEyfrEkPHzSsCd",
+    "label": "Unknown Whale #1",
+    "category": "unknown",
+    "balance_btc": 15200,
+    "balance_usd": 1337600000,
+    "days_dormant": 820,
+    "last_outgoing_ts": 1640000000,
+    "detected_date": "2026-03-10"
+  }
+]
